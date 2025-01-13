@@ -1,0 +1,1 @@
+Server Machine Dataset (SMD) is a dataset records telemetry data from 28 different servers, each with 38 features representing various performance metrics.

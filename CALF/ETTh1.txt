@@ -1,0 +1,58 @@
+Args in experiment:
+[1mBasic Config[0m
+  Task Name:          long_term_forecast  Is Training:        1                   
+  Model ID:           ETTh1_CALF_96_96    Model:              CALF                
+
+[1mData Loader[0m
+  Data:               ETTh1               Root Path:          /home/nathan/LLM4TS/datasets/forecasting/ETT-small
+  Data Path:          ETTh1.csv           Features:           M                   
+  Target:             OT                  Freq:               h                   
+  Checkpoints:        ./checkpoints/      
+
+[1mForecasting Task[0m
+  Seq Len:            96                  Label Len:          0                   
+  Pred Len:           96                  Seasonal Patterns:  Monthly             
+  Inverse:            0                   
+
+[1mModel Parameters[0m
+  Top k:              5                   Num Kernels:        6                   
+  Enc In:             7                   Dec In:             7                   
+  C Out:              7                   d model:            768                 
+  n heads:            4                   e layers:           2                   
+  d layers:           1                   d FF:               768                 
+  Moving Avg:         25                  Factor:             1                   
+  Distil:             1                   Dropout:            0.3                 
+  Embed:              timeF               Activation:         gelu                
+  Output Attention:   0                   
+
+[1mRun Parameters[0m
+  Num Workers:        10                  Itr:                1                   
+  Train Epochs:       5                   Batch Size:         64                  
+  Patience:           10                  Learning Rate:      0.0005              
+  Des:                test                Feature Loss:       l1                  Output Loss:        l1                  Task Loss:          l1                  
+  Lradj:              type1               Use Amp:            0                   
+
+[1mGPU[0m
+  Use GPU:            1                   GPU:                0                   
+  Use Multi GPU:      0                   Devices:            0,1,2,3             
+
+[1mDe-stationary Projector Params[0m
+  P Hidden Dims:      128, 128            P Hidden Layers:    2                   
+
+[1mDistill Loss Weight[0m
+  Feature Weight:     0.01                Output Weight:      1.0                 Task Weight:        1.0                 
+
+Use GPU: cuda:0
+>>>>>>>start training : long_term_forecast_ETTh1_CALF_96_96_CALF_ETTh1_ftM_sl96_ll0_pl96_dm768_nh4_el2_dl1_df768_fc1_ebtimeF_dtTrue_test_gpt6_NoLLM_0>>>>>>>>>>>>>>>>>>>>>>>>>>
+train 8449
+val 2785
+test 2785
+	iters: 100, epoch: 1 | loss: 0.5727517
+	speed: 0.0338s/iter; left time: 18.9543s
+Epoch: 1 cost time: 4.314661741256714
+Epoch: 1, Steps: 132 | Train Loss: 0.6454696 Vali Loss: 0.7217443 Test Loss: 0.3931608
+lr = 0.0004969221
+Validation loss decreased (inf --> 0.721744).  Saving model ...
+	iters: 100, epoch: 2 | loss: 0.4656428
+	speed: 0.3524s/iter; left time: 151.2009s
+Epoch: 2 cost time: 3.2989208698272705

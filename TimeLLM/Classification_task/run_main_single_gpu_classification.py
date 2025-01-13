@@ -1,0 +1,284 @@
+import argparse
+import torch
+from accelerate import Accelerator, DeepSpeedPlugin
+from accelerate import DistributedDataParallelKwargs
+from torch import nn, optim
+from torch.optim import lr_scheduler
+from tqdm import tqdm
+from sklearn.metrics import accuracy_score
+from models import Autoformer, DLinear, TimeLLM_classification
+
+from data_provider.data_factory import data_provider, data_provider_classification
+import time
+import random
+import numpy as np
+import os
+import logging
+
+
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+os.environ['CURL_CA_BUNDLE'] = ''
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:64"
+from utils.tools import del_files, EarlyStopping, adjust_learning_rate, vali, load_content, vali_classification
+
+parser = argparse.ArgumentParser(description='Time-LLM')
+
+fix_seed = 2021
+random.seed(fix_seed)
+torch.manual_seed(fix_seed)
+np.random.seed(fix_seed)
+
+# basic config
+parser.add_argument('--task_name', type=str, default='classification',
+                    help='task name, options:[long_term_forecast, short_term_forecast, imputation, classification, anomaly_detection]')
+parser.add_argument('--is_training', type=int,  default=1, help='status')
+parser.add_argument('--model_id', type=str, default='EthanolConcentration', help='model id')
+parser.add_argument('--model_comment', type=str, default='TimeLLM-PEMS-SF', help='prefix when saving test results(Classification)')
+parser.add_argument('--model', type=str,  default='AutoFormer',
+                    help='model name, options: [Autoformer, DLinear]')
+parser.add_argument('--seed', type=int, default=2021, help='random seed')
+
+# data loader
+parser.add_argument('--data', type=str, default='EthanolConcentration', help='dataset type')
+parser.add_argument('--root_path', type=str, default='/home/nathan/LLM4TS/datasets/classification', help='root path of the data file')
+parser.add_argument('--data_path', type=str, default='EthanolConcentration', help='data file')
+parser.add_argument('--features', type=str, default='M',
+                    help='forecasting task, options:[M, S, MS]; '
+                         'M:multivariate predict multivariate, S: univariate predict univariate, '
+                         'MS:multivariate predict univariate')
+parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
+parser.add_argument('--loader', type=str, default='modal', help='dataset type')
+parser.add_argument('--freq', type=str, default='h',
+                    help='freq for time features encoding, '
+                         'options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], '
+                         'you can also use more detailed freq like 15min or 3h')
+parser.add_argument('--checkpoints', type=str, default='/home/nathan/LLM4TS/Classification_task/Time-LLM/checkpoints', help='location of model checkpoints')
+
+# forecasting task
+parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
+parser.add_argument('--label_len', type=int, default=48, help='start token length')
+parser.add_argument('--pred_len', type=int, default=96, help='prediction sequence length')
+parser.add_argument('--seasonal_patterns', type=str, default='Monthly', help='subset for M4')
+
+# model define
+parser.add_argument('--enc_in', type=int, default=7, help='encoder input size')
+parser.add_argument('--dec_in', type=int, default=7, help='decoder input size')
+parser.add_argument('--c_out', type=int, default=7, help='output size')
+parser.add_argument('--d_model', type=int, default=16, help='dimension of model')
+parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
+parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
+parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
+parser.add_argument('--d_ff', type=int, default=128, help='dimension of fcn')
+parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
+parser.add_argument('--factor', type=int, default=3, help='attn factor')
+parser.add_argument('--dropout', type=float, default=0.1, help='dropout')
+parser.add_argument('--embed', type=str, default='timeF',
+                    help='time features encoding, options:[timeF, fixed, learned]')
+parser.add_argument('--activation', type=str, default='gelu', help='activation')
+parser.add_argument('--output_attention', default=False, help='whether to output attention in encoder')
+parser.add_argument('--patch_len', type=int, default=16, help='patch length')
+parser.add_argument('--stride', type=int, default=8, help='stride')
+parser.add_argument('--prompt_domain', type=int, default=0, help='')
+parser.add_argument('--llm_model', type=str, default='Linear', help='LLM model') # LLAMA, GPT2, BERT
+parser.add_argument('--llm_dim', type=int, default=768, help='LLM model dimension')# LLama7b:4096; GPT2-small:768; BERT-base:768
+
+# optimization
+parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
+parser.add_argument('--itr', type=int, default=1, help='experiments times')
+parser.add_argument('--train_epochs', type=int, default=100, help='train epochs')
+parser.add_argument('--align_epochs', type=int, default=10, help='alignment epochs')
+parser.add_argument('--batch_size', type=int, default=4, help='batch size of train input data')
+parser.add_argument('--eval_batch_size', type=int, default=8, help='batch size of model evaluation')
+parser.add_argument('--patience', type=int, default=10, help='early stopping patience')
+parser.add_argument('--learning_rate', type=float, default=0.1, help='optimizer learning rate')
+parser.add_argument('--des', type=str, default='Exp', help='exp description')
+parser.add_argument('--loss', type=str, default='crossentropy', help='loss function')
+parser.add_argument('--lradj', type=str, default='type1', help='adjust learning rate')
+parser.add_argument('--pct_start', type=float, default=0.2, help='pct_start')
+parser.add_argument('--use_amp', help='use automatic mixed precision training', default=False)
+parser.add_argument('--llm_layers', type=int, default=3)
+parser.add_argument('--percent', type=int, default=100)
+
+args = parser.parse_args()
+
+
+
+print(f'============================================ Task: {args.task_name}_{args.data_path}_{args.pred_len} ============================================')
+logging.basicConfig(
+                    level=logging.DEBUG,  # Set the log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Define the log format
+                    filename=f'{args.llm_model}_{args.data}.log',  # Set the log file path
+                    filemode='a+'  # 'w' to overwrite the file each time, 'a' to append
+                )
+
+logger = logging.getLogger(__name__)
+
+
+for ii in range(args.itr):
+    # setting record of experiments
+    setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_{}_{}'.format(
+        args.task_name,
+        args.model_id,
+        args.model,
+        args.data,
+        args.features,
+        args.seq_len,
+        args.label_len,
+        args.pred_len,
+        args.d_model,
+        args.n_heads,
+        args.e_layers,
+        args.d_layers,
+        args.d_ff,
+        args.factor,
+        args.embed,
+        args.des, ii)
+
+    train_data, train_loader = data_provider_classification(args, 'TRAIN')
+    test_data, test_loader = data_provider_classification(args, 'TEST')
+    args.content = load_content(args)
+    
+    n_classes = []
+    for data, label in train_data:
+        max_len, d_inp = data.shape
+        n_classes.append(label)
+        
+    n_classes = len(set(n_classes))
+    
+    if args.model == 'DLinear':
+        model = DLinear.Model(args, n_classes, d_inp).float()
+    elif args.model == 'Linear':
+        model = TimeLLM_classification.LinearModel(args, n_classes, d_inp).float()
+        print('HERE ===========')
+    else:
+        model = TimeLLM_classification.Model(args, n_classes, d_inp).float()
+
+    path = os.path.join(args.checkpoints,
+                        setting + '-' + args.model_comment)  # unique checkpoint saving path
+    
+
+    time_now = time.time()
+
+    train_steps = len(train_loader)
+    print(f'========================================== Number of Batches -----> {train_steps} ==========================================')
+    early_stopping = EarlyStopping(patience=args.patience)
+
+    trained_parameters = []
+    for p in model.parameters():
+        if p.requires_grad is True:
+            trained_parameters.append(p)
+
+    model_optim = optim.Adam(trained_parameters, lr=args.learning_rate)
+
+    if args.lradj == 'COS':
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(model_optim, T_max=20, eta_min=1e-8)
+    else:
+        scheduler = lr_scheduler.OneCycleLR(optimizer=model_optim,
+                                            steps_per_epoch=train_steps,
+                                            pct_start=args.pct_start,
+                                            epochs=args.train_epochs,
+                                            max_lr=args.learning_rate)
+        
+    criterion = nn.CrossEntropyLoss()
+    if args.use_amp:
+        scaler = torch.cuda.amp.GradScaler()
+
+    for epoch in range(args.train_epochs):
+        iter_count = 0
+        train_loss = []
+        model.train()
+        model = model.to(DEVICE)
+        epoch_time = time.time()
+        train_scores = []
+        train_true = []
+        y_pred = []
+        for i, (batch_x, batch_y) in tqdm(enumerate(train_loader)):
+            iter_count += 1
+            model_optim.zero_grad()
+
+            batch_x = batch_x.float().to(DEVICE)
+            batch_y = batch_y.long().squeeze(-1).to(DEVICE)
+            batch_x_mark = None
+            batch_y_mark = None
+            
+            # decoder input
+            dec_inp = None
+
+            # encoder - decoder
+            if args.use_amp:
+                with torch.cuda.amp.autocast():
+                    if args.output_attention:
+                        outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                    else:
+                        outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                    f_dim = -1 if args.features == 'MS' else 0
+                    outputs = outputs[:, -args.pred_len:, f_dim:]
+                    batch_y = batch_y[:, -args.pred_len:, f_dim:].to(DEVICE)
+                    loss = criterion(outputs, batch_y)
+                    train_loss.append(loss.item())
+            else:
+                if args.output_attention:
+                    outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)[0]
+                else:
+                    outputs = model(batch_x, batch_x_mark, dec_inp, batch_y_mark)
+                    
+                loss = criterion(outputs, batch_y)
+                train_loss.append(loss.item())
+
+            if (i + 1) % 100 == 0:
+                print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
+                speed = (time.time() - time_now) / iter_count
+                left_time = speed * ((args.train_epochs - epoch) * train_steps - i)
+                print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
+                iter_count = 0
+                time_now = time.time()
+                print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
+            if args.use_amp:
+                scaler.scale(loss).backward()
+                scaler.step(model_optim)
+                scaler.update()
+            else:
+                loss.backward()
+                model_optim.step()
+            
+            outputs = torch.nn.functional.softmax(outputs, dim=1)
+            train_scores.extend(outputs.detach().cpu().numpy())
+            _, y_pred_batch = torch.max(outputs, dim=1)
+            y_pred.extend(y_pred_batch.detach().cpu().numpy())
+            train_true.extend(batch_y.detach().cpu().numpy())
+            train_loss.append(loss.item())
+            
+        train_scores = np.stack(train_scores)
+        train_true = np.stack(train_true)
+        y_pred = np.stack(y_pred)
+        train_acc = accuracy_score(train_true, y_pred)
+        
+        
+        print(f'========================================== Finish Training Epoch {epoch} ==========================================')
+        train_loss = np.average(train_loss)
+        print('========================================== Start Test ==========================================')
+        test_loss, test_acc = vali_classification(args, model, test_data, test_loader, criterion)
+        
+        test_msg = "Epoch: {0} | Train Loss: {1:.7f} Train Acc: {2:.7f} Test Loss: {3:.7f} Test Acc: {4:.7f}".format(
+                epoch + 1, train_loss, train_acc, test_loss, test_acc)
+        print(test_msg)
+        logger.info(test_msg)
+
+        early_stopping(test_loss, model, path)
+        if early_stopping.early_stop:
+            print("Early stopping")
+            break
+
+        if args.lradj != 'TST':
+            if args.lradj == 'COS':
+                scheduler.step()
+                print("lr = {:.10f}".format(model_optim.param_groups[0]['lr']))
+            else:
+                if epoch == 0:
+                    args.learning_rate = model_optim.param_groups[0]['lr']
+                    print("lr = {:.10f}".format(model_optim.param_groups[0]['lr']))
+                adjust_learning_rate(model_optim, scheduler, epoch + 1, args, printout=True)
+
+        else:
+            print('Updating learning rate to {}'.format(scheduler.get_last_lr()[0]))

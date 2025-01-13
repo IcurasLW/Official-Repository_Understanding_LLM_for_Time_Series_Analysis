@@ -1,0 +1,1 @@
+Pooled Server Metrics (PSM) is a dataset collected internally from multiple application server nodes at eBay, anonymized and published with this study. The data consists of 26 features, including localization meta-attributes omitted from the publication due to anonymization requirements.  The features describe server machine metrics such as CPU utilization and memory.

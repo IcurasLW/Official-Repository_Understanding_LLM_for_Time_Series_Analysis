@@ -1,0 +1,1 @@
+The Secure Water Treatment (SWaT) dataset is a time-series dataset designed for anomaly detection in industrial control systems, specifically for water treatment processes. It was collected from a scaled-down operational water treatment testbed over 11 days.

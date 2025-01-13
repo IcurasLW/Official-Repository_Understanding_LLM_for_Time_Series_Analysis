@@ -1,0 +1,1 @@
+Illness dataset  contains weekly reporting of patients with symptoms related to influenza. Each data time point includes variables, such as the age group, the number of reporting providers, and weighted and unweighted ILI cases.

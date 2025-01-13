@@ -1,0 +1,1 @@
+The MSL (Mars Science Laboratory) Anomaly Detection Dataset contains telemetry data from NASA's Curiosity rover, designed to detect anomalies in spacecraft systems. It includes both point and contextual anomalies, manually labeled based on actual incidents. It includes both point and contextual anomalies, manually labeled based on actual incidents.

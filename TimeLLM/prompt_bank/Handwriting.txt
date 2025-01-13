@@ -1,0 +1,1 @@
+This dataset, created at UCR, contains motion data recorded from a smartwatch while the subject writes the 26 letters of the alphabet. It includes 150 training cases and 850 test cases. Each instance has six dimensions: three accelerometer values and three gyroscope readings. The dataset is used to study the adaptation of Dynamic Time Warping (DTW) to multi-dimensional data.

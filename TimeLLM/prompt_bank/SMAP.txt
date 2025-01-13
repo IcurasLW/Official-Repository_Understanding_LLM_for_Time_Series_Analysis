@@ -1,0 +1,1 @@
+The SMAP (Soil Moisture Active Passive) dataset is a multivariate time-series dataset collected from NASA's SMAP satellite, which monitors soil moisture levels globally. It includes telemetry data from spacecraft systems, capturing both normal and anomalous behavior.
