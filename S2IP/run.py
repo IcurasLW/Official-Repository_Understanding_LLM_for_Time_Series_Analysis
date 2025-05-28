@@ -19,19 +19,19 @@ np.random.seed(fix_seed)
 parser = argparse.ArgumentParser(description='anomaly_detection')
 
 # basic config
-parser.add_argument('--task_name', type=str, default='anomaly_detection',
+parser.add_argument('--task_name', type=str, default='long_term_forecast',
                     help='task name, options:[long_term_forecast, short_term_forecast, imputation, classification, anomaly_detection]')
 parser.add_argument('--is_training', type=int,  default=1, help='status')
-parser.add_argument('--model_id', type=str, default='SMD', help='model id')
+parser.add_argument('--model_id', type=str, default='ETTh1_512_336', help='model id')
 parser.add_argument('--model', type=str, default='S2IPLLM',
                     help='model name, options: [Autoformer, Transformer, TimesNet]')
 
 # data loader
-parser.add_argument('--data', type=str, default='SMD', help='dataset type')
-parser.add_argument('--number_variable', type=int,default=38, help='number of variable')
+parser.add_argument('--data', type=str, default='ETTh1', help='dataset type')
+parser.add_argument('--number_variable', type=int,default=7, help='number of variable')
 
-parser.add_argument('--root_path', type=str, default='/home/nathan/LLM4TS/datasets/anomaly_detection/SMD', help='root path of the data file')
-parser.add_argument('--data_path', type=str, default='SWAT', help='data file')
+parser.add_argument('--root_path', type=str, default='/home/nathan/LLM4TS/datasets/forecasting/ETT-small/', help='root path of the data file')
+parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
 parser.add_argument('--features', type=str, default='M',
                     help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
 parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
@@ -40,9 +40,9 @@ parser.add_argument('--freq', type=str, default='h',
 parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
 
 # forecasting task
-parser.add_argument('--seq_len', type=int, default=100, help='input sequence length')
+parser.add_argument('--seq_len', type=int, default=512, help='input sequence length')
 parser.add_argument('--label_len', type=int, default=0, help='start token length')
-parser.add_argument('--pred_len', type=int, default=0, help='prediction sequence length')
+parser.add_argument('--pred_len', type=int, default=96, help='prediction sequence length')
 parser.add_argument('--seasonal_patterns', type=str, default='Monthly', help='subset for M4')
 
 # Imputation
@@ -56,9 +56,9 @@ parser.add_argument('--anomaly_ratio', type=float, default=0.5)
 # model define
 parser.add_argument('--top_k', type=int, default=5, help='for TimesBlock')
 parser.add_argument('--num_kernels', type=int, default=6, help='for Inception')
-parser.add_argument('--enc_in', type=int, default=38, help='encoder input size')
-parser.add_argument('--dec_in', type=int, default=38, help='decoder input size')
-parser.add_argument('--c_out', type=int, default=38, help='output size')
+parser.add_argument('--enc_in', type=int, default=7, help='encoder input size')
+parser.add_argument('--dec_in', type=int, default=7, help='decoder input size')
+parser.add_argument('--c_out', type=int, default=7, help='output size')
 parser.add_argument('--d_model', type=int, default=768, help='dimension of model')
 parser.add_argument('--n_heads', type=int, default=6, help='num of heads')
 parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
@@ -78,8 +78,8 @@ parser.add_argument('--output_attention', action='store_true', help='whether to 
 # optimization
 parser.add_argument('--num_workers', type=int, default=90, help='data loader num workers')
 parser.add_argument('--itr', type=int, default=1, help='experiments times')
-parser.add_argument('--train_epochs', type=int, default=5, help='train epochs')
-parser.add_argument('--batch_size', type=int, default=15, help='batch size of train input data')
+parser.add_argument('--train_epochs', type=int, default=10, help='train epochs')
+parser.add_argument('--batch_size', type=int, default=10, help='batch size of train input data')
 parser.add_argument('--patience', type=int, default=3, help='early stopping patience')
 parser.add_argument('--learning_rate', type=float, default=1e-5, help='optimizer learning rate')
 parser.add_argument('--des', type=str, default='test', help='exp description')
@@ -113,15 +113,15 @@ parser.add_argument('--tokenization', type=str, default='patch', help='tokenizat
 parser.add_argument('--training_strategy', type=str, default='none', help='training_strategy')
 parser.add_argument('--add_prompt', type=int, default=1)
 parser.add_argument('--add_trainable_prompt', type=int, default=0)
-parser.add_argument('--prompt_length', type=int, default=4)
+parser.add_argument('--prompt_length', type=int, default=10)
 parser.add_argument('--sim_coef', type=float, default=0.0)
 parser.add_argument('--pool_size', type=int, default=1000)
 parser.add_argument('--period', type=int, default=100)
 parser.add_argument('--prompt_init', type=str, default='text_prototype', help='prompt_init_type')
-parser.add_argument('--trend_length', type=int, default=100, help='trend_length')
-parser.add_argument('--seasonal_length', type=int, default=100, help='seasonal_length')
+parser.add_argument('--trend_length', type=int, default=192, help='trend_length')
+parser.add_argument('--seasonal_length', type=int, default=48, help='seasonal_length')
 parser.add_argument('--num_class', type=int, default=1)
-parser.add_argument('--LLM', type=str, default='Linear')
+parser.add_argument('--LLM', type=str, default='GPT2')
 parser.add_argument('--gpu_index', type=int, default=0)
 parser.add_argument('--gpu_fraction', type=float, default=1.0)
 

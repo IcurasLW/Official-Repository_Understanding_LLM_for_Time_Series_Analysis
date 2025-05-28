@@ -20,6 +20,9 @@ from .prompt import Prompt
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
+
+
+
 class Results_Obj:
     def __init__(self):
         self.last_hidden_state = None
@@ -100,8 +103,9 @@ class Model(nn.Module):
         
         if self.task_name == 'long_term_forecast':
             self.in_layer = nn.Linear(configs.patch_size*3, configs.d_model)
-            self.out_layer = nn.Linear(int(configs.d_model / 3 * (self.patch_num+configs.prompt_length)) , configs.pred_len)
-            self.prompt_pool = Prompt(length=1, embed_dim=768, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
+            self.out_layer = nn.Linear(int(configs.d_model / 3 * 64) , configs.pred_len)
+            # self.out_layer = nn.Linear(int(configs.d_model / 3 * (self.patch_num+configs.prompt_length)) , configs.pred_len)
+            self.prompt_pool = Prompt(configs, patch_num = self.patch_num, length=1, embed_dim=768, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
                     prompt_key=True, pool_size=self.configs.pool_size, top_k=self.configs.prompt_length, batchwise_prompt=False, prompt_key_init=self.configs.prompt_init,wte = self.gpt2.wte.weight).to(DEVICE)
             del self.gpt2
             for layer in (self.backbone, self.in_layer, self.out_layer):       
@@ -111,7 +115,7 @@ class Model(nn.Module):
         elif self.task_name == 'classification':
             self.in_layer = nn.Linear(configs.patch_size*3*self.configs.enc_in, configs.d_model)
             self.out_layer = nn.Linear(int(configs.d_model * (self.patch_num+configs.prompt_length)) , configs.num_class)
-            self.prompt_pool = Prompt(length=1, embed_dim=768, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
+            self.prompt_pool = Prompt(configs, patch_num = self.patch_num, length=1, embed_dim=768, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
                     prompt_key=True, pool_size=self.configs.pool_size, top_k=self.configs.prompt_length, batchwise_prompt=False, prompt_key_init=self.configs.prompt_init,wte = self.gpt2.wte.weight).to(DEVICE)
             del self.gpt2
             for layer in (self.backbone, self.in_layer, self.out_layer):       
@@ -121,7 +125,7 @@ class Model(nn.Module):
         elif self.task_name == 'anomaly_detection':
             self.in_layer = nn.Linear(configs.patch_size*3, configs.d_model)
             self.out_layer = nn.Linear(int(configs.d_model / 3 * (self.patch_num+configs.prompt_length)) , configs.seq_len)
-            self.prompt_pool = Prompt(length=1, embed_dim=768, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
+            self.prompt_pool = Prompt(configs, patch_num = self.patch_num, length=1, embed_dim=768, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
                     prompt_key=True, pool_size=self.configs.pool_size, top_k=self.configs.prompt_length, batchwise_prompt=False, prompt_key_init=self.configs.prompt_init,wte = self.gpt2.wte.weight).to(DEVICE)
             del self.gpt2
             for layer in (self.backbone, self.in_layer, self.out_layer):       
@@ -131,7 +135,7 @@ class Model(nn.Module):
         elif self.task_name == 'imputation':
             self.in_layer = nn.Linear(configs.patch_size*3, configs.d_model)
             self.out_layer = nn.Linear(int(configs.d_model / 3 * (self.patch_num+configs.prompt_length)) , configs.seq_len)
-            self.prompt_pool = Prompt(length=1, embed_dim=768, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
+            self.prompt_pool = Prompt(configs, patch_num = self.patch_num, length=1, embed_dim=768, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
                     prompt_key=True, pool_size=self.configs.pool_size, top_k=self.configs.prompt_length, batchwise_prompt=False, prompt_key_init=self.configs.prompt_init,wte = self.gpt2.wte.weight).to(DEVICE)
             del self.gpt2
             for layer in (self.backbone, self.in_layer, self.out_layer):       
@@ -196,7 +200,7 @@ class Model(nn.Module):
         x = self.padding_patch_layer(x)
         x = x.unfold(dimension=-1, size=self.patch_size, step=self.stride)
         x = rearrange(x, 'b c n p -> b n (c p)', c = 3)  
-        pre_prompted_embedding = self.in_layer(x.float())
+        pre_prompted_embedding = self.in_layer(x.float()) # Time series
         outs = self.prompt_pool(pre_prompted_embedding)
         prompted_embedding = outs['prompted_embedding']
         sim = outs['similarity']

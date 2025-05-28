@@ -13,14 +13,44 @@ DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 
 
+class TimeTextMixer(nn.Module):
+    def __init__(self, seq_len, compress_token, d_model=None):
+        super().__init__()
+        self.seq_len = seq_len
+        self.d_model = d_model
+        self.compress_token = compress_token
+        
+        self.mlp_1 = nn.Sequential(nn.Linear(self.seq_len, self.compress_token),
+                                   nn.ReLU(),
+                                   nn.LayerNorm(self.compress_token),
+                                   nn.Linear(self.compress_token, self.compress_token),
+                                   nn.ReLU(),
+                                   nn.LayerNorm(self.compress_token))
+
+
+        self.mlp_2 = nn.Sequential(nn.Linear(self.d_model, self.d_model),
+                                    nn.ReLU(),
+                                    nn.LayerNorm(self.d_model),
+                                    nn.Linear(self.d_model, self.d_model),
+                                    nn.ReLU(),
+                                    nn.LayerNorm(self.d_model))
+        
+        
+    
+    def forward(self, x):
+        x = x.permute(0, 2, 1)
+        x = self.mlp_1(x)
+        
+        x = x.permute(0, 2, 1)
+        x = self.mlp_2(x)
+        return x 
 
 
 
 class Prompt(nn.Module):
-    def __init__(self, length=2, embed_dim=768, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
+    def __init__(self, args, patch_num=64, length=2, embed_dim=768, embedding_key='mean', prompt_init='uniform', prompt_pool=False, 
                  prompt_key=False, pool_size=30, top_k=4, batchwise_prompt=False, prompt_key_init='uniform',wte = None):
         super().__init__()
-
         self.length = length
         self.embed_dim = embed_dim
         self.prompt_pool = prompt_pool
@@ -29,11 +59,11 @@ class Prompt(nn.Module):
         self.prompt_key = prompt_key
         self.prompt_key_init = prompt_key_init
         self.pool_size = pool_size
-        print(self.pool_size)
+        # print(self.pool_size)
         self.top_k = top_k
         self.batchwise_prompt = batchwise_prompt
         self.wte = wte
-
+        self.timetext_mixer = TimeTextMixer(seq_len=args.prompt_length + patch_num, compress_token=64, d_model=768)
         if self.prompt_pool:
             prompt_pool_shape = (pool_size, length, embed_dim)
             if prompt_init == 'zero':
@@ -122,7 +152,7 @@ class Prompt(nn.Module):
                 idx = prompt_mask # B, top_k
 
             # batched_prompt_raw = self.prompt[idx] # B, top_k, length, C
-                
+            
             batched_prompt_raw = prompt_key[idx] # B, top_k, length, C
             batched_prompt_raw = batched_prompt_raw.unsqueeze(2) # B, top_k, 1, length, C
 
@@ -154,7 +184,10 @@ class Prompt(nn.Module):
         
         # The input with the prompt concatenated to the front. [B, prompt+token, C]
         out['total_prompt_len'] = batched_prompt.shape[1]
-        out['prompted_embedding'] = torch.cat([batched_prompt, x_embed], dim=1)
+        
+        x_embed = self.timetext_mixer(torch.cat([batched_prompt, x_embed], dim=1))
+        
+        out['prompted_embedding'] = x_embed
         out['prompt_key'] = prompt_key  # prompt_key
 
         return out
