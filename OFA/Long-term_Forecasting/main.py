@@ -28,55 +28,58 @@ random.seed(fix_seed)
 torch.manual_seed(fix_seed)
 np.random.seed(fix_seed)
 
+DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+
 parser = argparse.ArgumentParser(description='GPT4TS')
 
-parser.add_argument('--model_id', type=str, required=True, default='test')
+parser.add_argument('--model_id', type=str, default='test')
 parser.add_argument('--checkpoints', type=str, default='./checkpoints/')
 
-parser.add_argument('--root_path', type=str, default='./dataset/traffic/')
-parser.add_argument('--data_path', type=str, default='traffic.csv')
+parser.add_argument('--root_path', type=str, default='/media/nathan/DATA/1Adelaide/Irregular_Time_Series/datasets/Forcasting_dataset/illness/')
+parser.add_argument('--data_path', type=str, default='national_illness.csv')
 parser.add_argument('--data', type=str, default='custom')
 parser.add_argument('--features', type=str, default='M')
-parser.add_argument('--freq', type=int, default=1)
+parser.add_argument('--freq', type=int, default=0)
 parser.add_argument('--target', type=str, default='OT')
 parser.add_argument('--embed', type=str, default='timeF')
-parser.add_argument('--percent', type=int, default=10)
+parser.add_argument('--percent', type=int, default=100)
 
-parser.add_argument('--seq_len', type=int, default=512)
-parser.add_argument('--pred_len', type=int, default=96)
+parser.add_argument('--seq_len', type=int, default=104)
+parser.add_argument('--pred_len', type=int, default=60)
 parser.add_argument('--label_len', type=int, default=48)
 
-parser.add_argument('--decay_fac', type=float, default=0.75)
-parser.add_argument('--learning_rate', type=float, default=0.0001)
-parser.add_argument('--batch_size', type=int, default=512)
+parser.add_argument('--decay_fac', type=float, default=0.5)
+parser.add_argument('--learning_rate', type=float, default=0.00005)
+parser.add_argument('--batch_size', type=int, default=32)
 parser.add_argument('--num_workers', type=int, default=24)
 parser.add_argument('--train_epochs', type=int, default=10)
-parser.add_argument('--lradj', type=str, default='type1')
+parser.add_argument('--lradj', type=str, default='type4')
 parser.add_argument('--patience', type=int, default=3)
 
 parser.add_argument('--gpt_layers', type=int, default=6)
 parser.add_argument('--is_gpt', type=int, default=1)
 parser.add_argument('--e_layers', type=int, default=3)
 parser.add_argument('--d_model', type=int, default=768)
-parser.add_argument('--n_heads', type=int, default=16)
-parser.add_argument('--d_ff', type=int, default=512)
-parser.add_argument('--dropout', type=float, default=0.2)
-parser.add_argument('--enc_in', type=int, default=862)
-parser.add_argument('--c_out', type=int, default=862)
-parser.add_argument('--patch_size', type=int, default=16)
+parser.add_argument('--n_heads', type=int, default=4)
+parser.add_argument('--d_ff', type=int, default=768)
+parser.add_argument('--dropout', type=float, default=0.3)
+parser.add_argument('--enc_in', type=int, default=7)
+parser.add_argument('--c_out', type=int, default=7)
+parser.add_argument('--patch_size', type=int, default=24)
 parser.add_argument('--kernel_size', type=int, default=25)
 
 parser.add_argument('--loss_func', type=str, default='mse')
 parser.add_argument('--pretrain', type=int, default=1)
 parser.add_argument('--freeze', type=int, default=1)
-parser.add_argument('--model', type=str, default='model')
-parser.add_argument('--stride', type=int, default=8)
+parser.add_argument('--model', type=str, default='GPT4TS')
+parser.add_argument('--stride', type=int, default=2)
 parser.add_argument('--max_len', type=int, default=-1)
 parser.add_argument('--hid_dim', type=int, default=16)
-parser.add_argument('--tmax', type=int, default=10)
+parser.add_argument('--tmax', type=int, default=20)
 
 parser.add_argument('--itr', type=int, default=1)
-parser.add_argument('--cos', type=int, default=0)
+parser.add_argument('--cos', type=int, default=1)
 parser.add_argument('--LLM', type=str, default='GPT2')
 
 
@@ -131,7 +134,7 @@ for ii in range(args.itr):
         model = DLinear(args, device)
         model.to(device)
     else:
-        model = GPT4TS(args, device)
+        model = GPT4TS(args, device).to(DEVICE)
 
     params = model.parameters()
     model_optim = torch.optim.Adam(params, lr=args.learning_rate)
@@ -148,12 +151,12 @@ for ii in range(args.itr):
         criterion = SMAPE()
     
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(model_optim, T_max=args.tmax, eta_min=1e-8)
+    
+    
     for epoch in range(args.train_epochs):
-
         iter_count = 0
         train_loss = []
         epoch_time = time.time()
-        print(f'Number of Batches ----> {len(train_loader)}')
         for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
 
             iter_count += 1
@@ -164,7 +167,7 @@ for ii in range(args.itr):
             batch_x_mark = batch_x_mark.float().to(device)
             batch_y_mark = batch_y_mark.float().to(device)
             
-            outputs = model(batch_x, ii)
+            outputs, first_state, last_state = model(batch_x, ii)
 
             outputs = outputs[:, -args.pred_len:, :]
             batch_y = batch_y[:, -args.pred_len:, :].to(device)
@@ -180,6 +183,7 @@ for ii in range(args.itr):
                 time_now = time.time()
             loss.backward()
             model_optim.step()
+            
             
         print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
         train_loss = np.average(train_loss)
@@ -201,6 +205,7 @@ for ii in range(args.itr):
         if early_stopping.early_stop:
             print("Early stopping")
             break
+        # break
         
     best_model_path = path + '/' + 'checkpoint.pth'
     model.load_state_dict(torch.load(best_model_path))

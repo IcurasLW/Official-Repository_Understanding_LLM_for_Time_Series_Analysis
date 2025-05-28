@@ -7,7 +7,8 @@ for percent in 100
 do
 for pred_len in 96 192 336 720
 do
-
+for LLM in 'GPT2'  'Random' 'Att' 'Trans' 'Linear' 'NoLLM'
+do
 python main.py \
     --root_path ./datasets/ETT-small/ \
     --data_path ETTh2.csv \
@@ -16,14 +17,15 @@ python main.py \
     --seq_len $seq_len \
     --label_len 168 \
     --pred_len $pred_len \
-    --batch_size 256 \
-    --decay_fac 0.5 \
-    --learning_rate 0.0001 \
+    --batch_size 128 \
+    --lradj type4 \
+    --learning_rate $lr \
     --train_epochs 10 \
+    --decay_fac 0.5 \
     --d_model 768 \
     --n_heads 4 \
     --d_ff 768 \
-    --dropout 1 \
+    --dropout 0.3 \
     --enc_in 7 \
     --c_out 7 \
     --freq 0 \
@@ -33,10 +35,10 @@ python main.py \
     --gpt_layer 6 \
     --itr 1 \
     --model $model \
-    --cos 1 \
     --tmax 20 \
-    --pretrain 1 \
-    --is_gpt 1
-
+    --cos 1 \
+    --is_gpt 1 \
+    --LLM $LLM
 done
 done
+done 

@@ -39,7 +39,7 @@ python /home/nathan/LLM4TS/Forecasting_task/OneFitsAll/Long-term_Forecasting/mai
     --is_gpt 1 \
     --gpu_fraction 0.3 \
     --gpu_index $gpu_index \
-    --LLM Random
+    --LLM Random # change 
 
 python /home/nathan/LLM4TS/Forecasting_task/OneFitsAll/Long-term_Forecasting/main.py \
     --root_path /home/nathan/LLM4TS/datasets/forecasting/electricity \

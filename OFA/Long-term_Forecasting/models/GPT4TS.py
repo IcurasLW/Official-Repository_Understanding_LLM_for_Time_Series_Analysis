@@ -60,6 +60,8 @@ class Trans_Backbone(nn.Module):
         self.resutls_obj.last_hidden_state = out
         return self.resutls_obj
 
+
+
 class NoLLM(nn.Module):
     def __init__(self):
         super().__init__()
@@ -68,6 +70,8 @@ class NoLLM(nn.Module):
     def forward(self, inputs_embeds):
         self.resutls_obj.last_hidden_state = inputs_embeds
         return self.resutls_obj
+
+
 
 class GPT4TS(nn.Module):
     
@@ -78,15 +82,34 @@ class GPT4TS(nn.Module):
         self.pretrain = configs.pretrain
         self.stride = configs.stride
         self.patch_num = (configs.seq_len - self.patch_size) // self.stride + 1
-
         self.padding_patch_layer = nn.ReplicationPad1d((0, self.stride)) 
         self.patch_num += 1
-        
         self.llm = self.get_llm(configs)
+        self.text_topk = 5
         
-        self.in_layer = nn.Linear(configs.patch_size, configs.d_model)
-        self.out_layer = nn.Linear(configs.d_model * self.patch_num, configs.pred_len)
         
+        self.words_embedding = self.llm.get_input_embeddings().weight.data.to(DEVICE)
+        self.att = nn.MultiheadAttention(embed_dim=self.words_embedding.shape[-1], num_heads=4, batch_first=True)
+        
+        
+        self.mlp_1 = nn.Sequential(nn.Linear(self.patch_num + self.text_topk * self.patch_num, 8),
+                                   nn.ReLU(),
+                                   nn.LayerNorm(8),
+                                   nn.Linear(8, 8),
+                                   nn.ReLU(),
+                                   nn.LayerNorm(8))
+        
+        self.mlp_2 = nn.Sequential(nn.Linear(self.words_embedding.shape[-1], self.words_embedding.shape[-1]),
+                                    nn.ReLU(),
+                                    nn.LayerNorm(self.words_embedding.shape[-1]),
+                                    nn.Linear(self.words_embedding.shape[-1], self.words_embedding.shape[-1]),
+                                    nn.ReLU(),
+                                    nn.LayerNorm(self.words_embedding.shape[-1]))
+        self.words2proto = nn.Linear(self.words_embedding.shape[0], 1000)
+        
+        self.in_layer = nn.Linear(configs.patch_size, configs.d_model)        
+        self.dropout = nn.Dropout(0.5)
+        self.out_layer = nn.Linear(configs.d_model * 8, configs.pred_len)
         for layer in (self.llm, self.in_layer, self.out_layer):
             layer.to(device=device)
             layer.train()
@@ -103,19 +126,43 @@ class GPT4TS(nn.Module):
         x /= stdev
 
         x = rearrange(x, 'b l m -> b m l')
-
         x = self.padding_patch_layer(x)
         x = x.unfold(dimension=-1, size=self.patch_size, step=self.stride)
         x = rearrange(x, 'b m n p -> (b m) n p')
         outputs = self.in_layer(x)
+        
+        
+        ## Comment the below sesion if you don't need it
+        words = self.words2proto(self.words_embedding.permute(1, 0))
+        words = words.permute(1, 0).unsqueeze(0)
+        _, attn_weights = self.att(outputs, words.expand(outputs.shape[0], -1, -1), words.expand(outputs.shape[0], -1, -1))
+        topk_weight, topk_indices = torch.topk(attn_weights, k=self.text_topk, dim=-1) 
+        words_expand = words.unsqueeze(0).expand(outputs.shape[0], outputs.shape[1], -1, -1) #[32, 1000, 768]
+
+        topk_v = torch.gather(words_expand, dim=2, index=topk_indices.unsqueeze(-1).expand(-1, -1, -1, 768))  # (32, 4, 64, topk, 768)
+        topk_v = topk_v.view(B, -1, 768)
+        outputs = torch.concat([topk_v, outputs], dim=1)
+        outputs = outputs.permute(0, 2, 1)
+        outputs = self.mlp_1(outputs)
+        
+        outputs = outputs.permute(0, 2, 1)
+        outputs = self.mlp_2(outputs)
+        ## Comment the above sesion if you don't need it
+        
+        
         mid_state = self.llm(inputs_embeds=outputs)
         outputs = mid_state.last_hidden_state
-        hid_state = mid_state.hidden_states
+        last_state = None
+        first_state = None
+        last_state = mid_state.hidden_states[-1]
+        first_state = mid_state.hidden_states[0]
+        
         outputs = self.out_layer(outputs.reshape(B*M, -1))
         outputs = rearrange(outputs, '(b m) l -> b l m', b=B)
         outputs = outputs * stdev
         outputs = outputs + means
-        return outputs, hid_state
+        return outputs, first_state, last_state
+
 
 
 

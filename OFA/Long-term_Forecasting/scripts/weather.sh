@@ -7,7 +7,8 @@ for percent in 100
 do
 for pred_len in 96 192 336 720
 do
-
+for LLM in 'GPT2'  'Random' 'Att' 'Trans' 'Linear' 'NoLLM'
+do
 python main.py \
     --root_path ./datasets/weather/ \
     --data_path weather.csv \
@@ -34,7 +35,8 @@ python main.py \
     --gpt_layer 6 \
     --itr 3 \
     --model $model \
-    --is_gpt 1
-    
+    --is_gpt 1 \
+    --LLM $LLM
 done
 done
+done 
