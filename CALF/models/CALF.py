@@ -100,6 +100,42 @@ class Encoder_PCA(nn.Module):
 
 
 
+
+class TimeTextMixer(nn.Module):
+    def __init__(self, seq_len, text_topk, compress_token, d_model=None):
+        super().__init__()
+        self.text_topk = text_topk 
+        self.seq_len = seq_len
+        self.d_model = d_model
+        self.compress_token = compress_token
+        
+        self.mlp_1 = nn.Sequential(nn.Linear(self.seq_len, self.compress_token),
+                                   nn.ReLU(),
+                                   nn.LayerNorm(self.compress_token),
+                                   nn.Linear(self.compress_token, self.compress_token),
+                                   nn.ReLU(),
+                                   nn.LayerNorm(self.compress_token))
+        
+        self.mlp_2 = nn.Sequential(nn.Linear(self.d_model, self.d_model),
+                                    nn.ReLU(),
+                                    nn.LayerNorm(self.d_model),
+                                    nn.Linear(self.d_model, self.d_model),
+                                    nn.ReLU(),
+                                    nn.LayerNorm(self.d_model))
+        
+    def forward(self, x_time, x_text):
+        x = torch.concat([x_time, x_text], dim=1)
+        x = x.permute(0, 2, 1)
+        x = self.mlp_1(x)
+        
+        x = x.permute(0, 2, 1)
+        x = self.mlp_2(x)
+        return x 
+
+
+
+
+
 class Model(nn.Module):
     def __init__(self, configs, device):
         super(Model, self).__init__()
@@ -123,6 +159,7 @@ class Model(nn.Module):
         self.text_proj = nn.ModuleList([nn.Linear(configs.d_model, configs.d_model, bias=False) for _ in range(configs.gpt_layers+1)])
         self.in_layer = Encoder_PCA(configs.seq_len, word_embedding, hidden_dim=configs.d_model)
         
+        self.timetext_mixer = TimeTextMixer(configs.enc_in*2, 10, configs.enc_in, 768) # comment out if you don't need 
         
         if self.task_name == 'long_term_forecast' or self.task_name == 'short_term_forecast':
             self.out_layer = nn.Linear(configs.d_model, configs.pred_len)
@@ -138,7 +175,8 @@ class Model(nn.Module):
             layer.train()
         
         self.cnt = 0
-        
+
+
 
     def forecast(self, x):
         B, L, M = x.shape
@@ -157,6 +195,8 @@ class Model(nn.Module):
         # residue connection
         outputs_time = outputs_time1 + outputs_time
         outputs_text = outputs_text1 + outputs_text
+        
+        # outputs_time = self.timetext_mixer(outputs_time, outputs_text)
         
         if self.configs.LLM in ['GPT2', 'Random']:
             intermidiate_feat_time = tuple([self.time_proj[idx](feat) for idx, feat in enumerate(list(intermidiate_feat_time))])
@@ -179,6 +219,8 @@ class Model(nn.Module):
             'outputs_time':outputs_time,
             'intermidiate_time':intermidiate_feat_time,
             'intermidiate_text':intermidiate_feat_text,
+            'in_time':outputs_time1,
+            'in_txt':outputs_text1
         }
 
 
