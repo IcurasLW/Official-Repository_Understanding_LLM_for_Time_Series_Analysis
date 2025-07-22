@@ -23,8 +23,10 @@ The results can be reproduced by the scripts under ```[model name]/[task name]/s
 
 # Preliminary Solution
 
-We proposed a preliminary solution
-![Preliminary Solution](./assets/preliminary_solution.png)
+We proposed a preliminary solution to mitigate the pseudo-alignment problem. See [paper](https://arxiv.org/pdf/2410.12326) for detailed description.
+
+
+![Preliminary Solution](./assets/preliminary_solution.jpg)
 
 
 
