@@ -29,7 +29,12 @@ We proposed a preliminary solution to mitigate the pseudo-alignment problem. See
 ![Preliminary Solution](./assets/preliminary_solution.jpg)
 
 
+# Follow-up Work:
 
+If you have interest, you may also read another work we have done to review the actual cause of Pseudo-alignment problem and a complete solution to address it with more claritification and experiment.
+
+
+[Zheng, L. N., Liang, W., Zhang, W. E., Xu, M., Maennel, O., & Chen, W. (2025). Lifting Manifolds to Mitigate Pseudo-Alignment in LLM4TS](https://arxiv.org/abs/2510.12847)
 
 
 
