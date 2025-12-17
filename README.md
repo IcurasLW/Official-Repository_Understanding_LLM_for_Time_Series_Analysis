@@ -21,13 +21,6 @@ The results can be reproduced by the scripts under ```[model name]/[task name]/s
 
 
 
-# Preliminary Solution
-
-We proposed a preliminary solution to mitigate the pseudo-alignment problem. See [paper](https://arxiv.org/abs/2410.12326) for detailed description.
-
-
-![Preliminary Solution](./assets/preliminary_solution.jpg)
-
 # Follow-up work
 
 If you have interest, please also find a follow-up work to reveal pseudo-alignment problem and a specific method to address it. More detailed clarification and experiment are provided. 
